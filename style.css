@@ -1,0 +1,148 @@
+*{
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+.clearfix{
+    clear: both;
+}
+.homepage{
+    height: 100vh;
+    width: 100%;
+    background-image: url("images/drew-coffman-1872.jpg");
+    background-position: center center;
+    background-size: cover;
+    text-align: center;
+    color: aliceblue;
+    font-size: 150%;
+}
+.content{
+    padding-top: 150px;
+}
+.header{
+    position: fixed;
+    top: 0;
+    left: 50px;
+    right: 50px;
+    
+}
+
+.header img{
+    float: left;
+    width: 200px;
+}
+.header ul{
+    float: right;
+    list-style-type: none;
+    margin-top: 30px;
+
+    
+}
+.header ul li{
+    display: inline;
+    margin: 0 15px;
+}
+
+.homepage h1{
+    margin:100px 0 ;
+}
+.homepage button{
+    padding: 20px 15px;
+    border-radius: 10px;
+    font-size: 15px;
+    color: aliceblue;
+}
+#p1{
+    margin-bottom: 50px;
+}
+.btn-trans{
+    background-color: transparent;
+    border: solid white 1px;
+}
+.btn-brown{
+    background-color: #8e7754;
+}
+.who-are-we-img{
+    width: 50%;
+    float: left;
+    text-align: center;
+    padding:100px 0 ;
+}
+.who-are-we-img img{
+    width: 65%; 
+}
+.who-are-we-content{
+    width: 50%;
+    padding: 8% 10%;
+    float: left;
+    font-size: 25px;
+    color: gray;
+}
+ h2{
+    padding-bottom: 20px;
+    color: black;
+}
+.who-are-we-content ul li img{
+    width: 25px;
+}
+.who-are-we-content p{
+    padding-bottom: 20px;
+}
+.who-are-we-content ul{
+    list-style-type: none;
+    line-height: 50px;
+}
+.our-location{
+    width: 100%;
+    background-color: rgba(248, 242, 242, 0.984);
+}
+.our-location-child{
+    width: 90%;
+    margin: auto;
+}
+.our-location-child-content{
+    width: 50%;
+    float: left; 
+    color: grey;
+    font-size: 20px;
+    font-family: cursive;
+    padding: 90px;
+}
+.our-location-child-img{
+    width: 50%;
+    float: left;
+    text-align: center;
+}
+.our-location-child-img img{
+    width: 65%;
+    padding: 90px 0;
+}
+.our-baking{
+    width: 100%;
+    height: 100vh;
+}
+.our-baking-child{
+    width: 90%;
+    margin: auto;
+    padding: 50px 0 50px 0;
+    font-size: 18px;
+    text-align: center;
+    font-family: cursive;
+}
+.our-baking-element{
+    float: left;
+    padding-left: 30px;
+    width: 33%;
+    color: #706f6e;
+}
+
+.our-baking-element h3{
+    color: black;
+    
+}
+.our-baking-element img{
+    width: 95%;
+}
+.backing-element3{
+    padding-left: none ;
+}
