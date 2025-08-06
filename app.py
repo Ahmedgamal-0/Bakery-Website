@@ -109,35 +109,25 @@ def calculate_trajectory_physics(trajectory_points, fps=30):
     x = points[:, 0]
     y = points[:, 1]
     
-    # Use more points for stable calculation but limit to avoid noise
-    num_points = min(8, len(trajectory_points))
+    # Use only the first few points for initial velocity (more stable)
+    num_points = min(5, len(trajectory_points))
     
-    # Calculate velocities using multiple point differences for smoothing
-    velocities_x = []
-    velocities_y = []
-    
-    # Calculate velocity using different time intervals and average them
-    for dt in range(1, min(4, num_points)):
-        if dt < len(x):
-            dx = np.diff(x[:num_points:dt])
-            dy = np.diff(y[:num_points:dt])
-            
-            # Scale by time interval
-            vx_dt = dx / dt
-            vy_dt = dy / dt
-            
-            velocities_x.extend(vx_dt)
-            velocities_y.extend(vy_dt)
-    
-    if not velocities_x or not velocities_y:
-        return None, None, None
-    
-    # Use median instead of mean to reduce noise impact
-    avg_dx = np.median(velocities_x)
-    avg_dy = np.median(velocities_y)
+    # Simple velocity calculation using first few points
+    if num_points >= 3:
+        # Use first 3 points for most stable calculation
+        dx = x[2] - x[0]  # Change over 2 frames
+        dy = y[2] - y[0]
+        dt = 2  # 2 frame difference
+        
+        avg_dx = dx / dt
+        avg_dy = dy / dt
+    else:
+        # Fallback to simple difference
+        avg_dx = np.mean(np.diff(x[:num_points]))
+        avg_dy = np.mean(np.diff(y[:num_points]))
     
     # Apply velocity limits to prevent unrealistic values
-    MAX_VELOCITY_PX_FRAME = 30  # Maximum 30 pixels per frame (reasonable for golf ball)
+    MAX_VELOCITY_PX_FRAME = 15  # Reduced to 15 pixels per frame
     avg_dx = np.clip(avg_dx, -MAX_VELOCITY_PX_FRAME, MAX_VELOCITY_PX_FRAME)
     avg_dy = np.clip(avg_dy, -MAX_VELOCITY_PX_FRAME, MAX_VELOCITY_PX_FRAME)
     
@@ -149,8 +139,8 @@ def calculate_trajectory_physics(trajectory_points, fps=30):
     v0 = np.sqrt(vx0**2 + vy0**2)
     angle = np.arctan2(vy0, vx0) * 180 / np.pi  # Convert to degrees
     
-    # Apply realistic velocity limits (golf ball typically 30-70 m/s = 3000-7000 px/s at 100px/m)
-    MAX_REALISTIC_VELOCITY = 900  # pixels per second (9 m/s reasonable for video analysis)
+    # Apply more conservative velocity limits
+    MAX_REALISTIC_VELOCITY = 450  # Reduced to 450 px/s (4.5 m/s reasonable for video analysis)
     if v0 > MAX_REALISTIC_VELOCITY:
         scale_factor = MAX_REALISTIC_VELOCITY / v0
         v0 = MAX_REALISTIC_VELOCITY
@@ -161,8 +151,8 @@ def calculate_trajectory_physics(trajectory_points, fps=30):
     
     return v0, angle, (vx0, vy0)
 
-def predict_trajectory(start_point, velocity, gravity_effect, num_points=30):
-    """Predict future trajectory based on initial conditions"""
+def predict_trajectory(start_point, velocity, gravity_effect, frame_height, num_points=50):
+    """Predict future trajectory based on initial conditions until ball hits ground"""
     trajectory = []
     x, y = start_point
     vx, vy = velocity
@@ -172,10 +162,14 @@ def predict_trajectory(start_point, velocity, gravity_effect, num_points=30):
         x += vx
         y += vy
         
-        # Apply gravity effect
-        vy += gravity_effect
+        # Apply gravity effect (positive because y increases downward in image coordinates)
+        vy += abs(gravity_effect)  # Make sure gravity pulls downward
         
         trajectory.append((x, y))
+        
+        # Stop if ball goes below frame or too far horizontally
+        if y > frame_height or x < 0 or x > frame_height * 2:  # Assume reasonable bounds
+            break
     
     return trajectory
 
@@ -183,6 +177,8 @@ def draw_physics_based_trajectory(frame, trajectory_points, initial_position, fp
     """Draw trajectory with physics-based prediction"""
     if not trajectory_points and not initial_position:
         return frame
+    
+    frame_height, frame_width = frame.shape[:2]
     
     # Always include initial position at the start
     all_points = []
@@ -199,8 +195,8 @@ def draw_physics_based_trajectory(frame, trajectory_points, initial_position, fp
     # Convert points to numpy array
     points = np.array(all_points, dtype=np.int32)
     
-    # Draw thick trajectory line for observed points
-    cv2.polylines(frame, [points], False, (0, 255, 0), 4)
+    # Draw much thicker trajectory line for observed points
+    cv2.polylines(frame, [points], False, (0, 255, 0), 8)
     
     # Calculate physics if we have enough points
     if len(trajectory_points) >= 3:
@@ -211,39 +207,53 @@ def draw_physics_based_trajectory(frame, trajectory_points, initial_position, fp
                 
                 # Draw physics info on frame
                 info_text = f"v0: {v0:.0f} px/s"
-                cv2.putText(frame, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(frame, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 3)
                 
                 angle_text = f"Angle: {angle:.1f}°"
-                cv2.putText(frame, angle_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(frame, angle_text, (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 3)
                 
                 # Predict future trajectory with gravity
                 if len(trajectory_points) >= 3:
                     last_point = trajectory_points[-1]
-                    gravity_effect = (GRAVITY * PIXELS_PER_METER) / (fps**2)
+                    # Increase gravity effect for more realistic parabola
+                    gravity_effect = (GRAVITY * PIXELS_PER_METER * 2) / (fps**2)  # Doubled gravity effect
                     predicted_points = predict_trajectory(
                         last_point,
                         (vx0/fps, vy0/fps),  # Convert to px/frame
-                        gravity_effect
+                        gravity_effect,
+                        frame_height
                     )
                     
-                    # Draw predicted trajectory in red
+                    # Draw predicted trajectory in thick red line
                     if len(predicted_points) > 1:
                         future_points = [last_point]
                         for pt in predicted_points:
                             future_points.append((int(pt[0]), int(pt[1])))
                         
                         future_array = np.array(future_points, dtype=np.int32)
-                        cv2.polylines(frame, [future_array], False, (0, 0, 255), 2)
+                        cv2.polylines(frame, [future_array], False, (0, 0, 255), 8)  # Much thicker red line
                         
-                        # Find and mark apex (highest point)
-                        y_values = [pt[1] for pt in future_points]
-                        min_y_idx = np.argmin(y_values)  # Lowest Y = highest point in image
-                        apex_x, apex_y = future_points[min_y_idx]
+                        # Find and mark apex (highest point) - only if trajectory goes up first
+                        if len(future_points) > 5:
+                            y_values = [pt[1] for pt in future_points]
+                            min_y_idx = np.argmin(y_values)  # Lowest Y = highest point in image
+                            
+                            # Only mark apex if it's not at the start (ball actually went up)
+                            if min_y_idx > 2:
+                                apex_x, apex_y = future_points[min_y_idx]
+                                cv2.circle(frame, (int(apex_x), int(apex_y)), 20, (255, 0, 0), -1)
+                                cv2.circle(frame, (int(apex_x), int(apex_y)), 15, (255, 255, 255), -1)
+                                cv2.putText(frame, 'APEX', (int(apex_x) + 25, int(apex_y) - 25), 
+                                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 3)
                         
-                        cv2.circle(frame, (int(apex_x), int(apex_y)), 15, (255, 0, 0), -1)
-                        cv2.circle(frame, (int(apex_x), int(apex_y)), 10, (255, 255, 255), -1)
-                        cv2.putText(frame, 'APEX', (int(apex_x) + 20, int(apex_y) - 20), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+                        # Mark landing point (last point of trajectory)
+                        if len(future_points) > 10:
+                            landing_x, landing_y = future_points[-1]
+                            cv2.circle(frame, (int(landing_x), int(landing_y)), 20, (0, 255, 255), -1)
+                            cv2.circle(frame, (int(landing_x), int(landing_y)), 15, (0, 0, 0), -1)
+                            cv2.putText(frame, 'LAND', (int(landing_x) + 25, int(landing_y) + 10), 
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 3)
+                        
         except Exception as e:
             logging.error(f"Physics calculation error: {e}")
     
@@ -363,25 +373,25 @@ def predict_video():
                 meas_y = float(current_pos[1]) if np.isscalar(current_pos[1]) else float(current_pos[1][0])
                 measurement = np.array([[meas_x], [meas_y]], dtype=np.float32)
 
-                # Predict then correct with velocity limiting
-                try:
-                    pred = kalman.predict()
-                    
-                    # Limit predicted velocities to prevent runaway values
-                    MAX_VEL = 50.0  # pixels per frame
-                    if abs(pred[2, 0]) > MAX_VEL:
-                        pred[2, 0] = np.sign(pred[2, 0]) * MAX_VEL
-                    if abs(pred[3, 0]) > MAX_VEL:
-                        pred[3, 0] = np.sign(pred[3, 0]) * MAX_VEL
-                    
-                    kalman.statePost = pred.copy()  # Use limited prediction
-                    kalman.correct(measurement)
-                    
-                    # Further limit corrected velocities
-                    if abs(kalman.statePost[2, 0]) > MAX_VEL:
-                        kalman.statePost[2, 0] = np.sign(kalman.statePost[2, 0]) * MAX_VEL
-                    if abs(kalman.statePost[3, 0]) > MAX_VEL:
-                        kalman.statePost[3, 0] = np.sign(kalman.statePost[3, 0]) * MAX_VEL
+                                 # Predict then correct with velocity limiting
+                 try:
+                     pred = kalman.predict()
+                     
+                     # Limit predicted velocities to prevent runaway values
+                     MAX_VEL = 20.0  # Reduced to 20 pixels per frame
+                     if abs(pred[2, 0]) > MAX_VEL:
+                         pred[2, 0] = np.sign(pred[2, 0]) * MAX_VEL
+                     if abs(pred[3, 0]) > MAX_VEL:
+                         pred[3, 0] = np.sign(pred[3, 0]) * MAX_VEL
+                     
+                     kalman.statePost = pred.copy()  # Use limited prediction
+                     kalman.correct(measurement)
+                     
+                     # Further limit corrected velocities
+                     if abs(kalman.statePost[2, 0]) > MAX_VEL:
+                         kalman.statePost[2, 0] = np.sign(kalman.statePost[2, 0]) * MAX_VEL
+                     if abs(kalman.statePost[3, 0]) > MAX_VEL:
+                         kalman.statePost[3, 0] = np.sign(kalman.statePost[3, 0]) * MAX_VEL
                     
                     filtered_x = float(kalman.statePost[0, 0])
                     filtered_y = float(kalman.statePost[1, 0])
